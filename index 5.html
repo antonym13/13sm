@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3D Конструктор картхолдера</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #141416;
+      --card: #1e1e22;
+      --border: #2e2e34;
+      --text: #f3f3f5;
+      --muted: #9898a0;
+      --accent: #c87d4b;
+      --accent-hover: #d98c59;
+      --canvas-bg: radial-gradient(circle at center, #25252b 0%, #141416 75%);
+      --footer-bg: rgba(20, 20, 22, 0.96);
+      --pill-bg: rgba(20, 20, 22, 0.85);
+    }
+
+    body.light-theme {
+      --bg: #f4f4f6;
+      --card: #ffffff;
+      --border: #dfe0e5;
+      --text: #18181b;
+      --muted: #6e6e77;
+      --accent: #b86b38;
+      --accent-hover: #a35a2a;
+      --canvas-bg: radial-gradient(circle at center, #ffffff 0%, #e4e5eb 80%);
+      --footer-bg: rgba(255, 255, 255, 0.96);
+      --pill-bg: rgba(255, 255, 255, 0.88);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden; transition: background 0.2s, color 0.2s; }
+
+    header {
+      padding: 12px 16px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 520px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .header-titles { text-align: left; }
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+    header p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .theme-toggle {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    #canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: 290px;
+      background: var(--canvas-bg);
+      touch-action: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #scene-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+    #scene-canvas:active { cursor: grabbing; }
+
+    .view-btns {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      background: var(--pill-bg);
+      padding: 4px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      backdrop-filter: blur(6px);
+      z-index: 5;
+    }
+    .view-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 6px 16px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .view-btn.active { background: var(--accent); color: #fff; }
+
+    .controls { padding: 14px 16px 100px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; width: 100%; margin: 0 auto; }
+    .section { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+    .section-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between; }
+    .section-title span { color: var(--text); }
+
+    .colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    .color-swatch {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .color-swatch.active { border-color: var(--card); transform: scale(1.1); box-shadow: 0 0 0 2px var(--accent); }
+
+    .side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--bg); padding: 4px; border-radius: 10px; margin-bottom: 12px; }
+    .side-tab {
+      background: transparent; border: none; color: var(--muted); padding: 8px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s;
+    }
+    .side-tab.active { background: var(--card); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .opt-btn, .corner-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 8px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      transition: 0.15s;
+    }
+    .opt-btn.active, .corner-btn.active {
+      border-color: var(--accent);
+      background: rgba(200, 125, 75, 0.16);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .engraving-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+    .engraving-row label { font-size: 14px; font-weight: 500; cursor: pointer; }
+    .engraving-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+    #engraving-input-wrap { margin-top: 10px; display: none; }
+    #engraving-text {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; border-radius: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;
+    }
+    #engraving-text:focus { outline: none; border-color: var(--accent); }
+
+    .footer-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--footer-bg);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      backdrop-filter: blur(10px);
+      z-index: 20;
+    }
+    .price-box { display: flex; flex-direction: column; }
+    .price-label { font-size: 11px; color: var(--muted); }
+    .price-val { font-size: 18px; font-weight: 700; color: var(--text); }
+    .order-btn {
+      flex: 1; max-width: 240px;
+      background: var(--accent); color: #fff; border: none; padding: 13px 18px;
+      border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .order-btn:hover { background: var(--accent-hover); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-titles">
+      <h1>3D Конструктор картхолдера</h1>
+      <p>100×100 мм • Вращайте 1 пальцем</p>
+    </div>
+    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️ Светлая</button>
+  </header>
+
+  <div id="canvas-wrap">
+    <canvas id="scene-canvas"></canvas>
+    <div class="view-btns">
+      <button class="view-btn active" id="btn-front" onclick="setCameraSide('front')">Спереди</button>
+      <button class="view-btn" id="btn-back" onclick="setCameraSide('back')">Сзади</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="section">
+      <div class="section-title">Цвет кожи (нить в тон) <span id="color-name">Коньячный</span></div>
+      <div class="colors" id="color-list"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Форма углов <span id="corner-label">Скруглённые (10 мм)</span></div>
+      <div class="options-grid">
+        <button class="corner-btn" data-corner="sharp" onclick="setCornerStyle('sharp')">Прямые (2 мм)</button>
+        <button class="corner-btn active" data-corner="round" onclick="setCornerStyle('round')">Скруглённые (10 мм)</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Конфигурация сторон <span id="active-side-label">Спереди</span></div>
+      <div class="side-tabs">
+        <button class="side-tab active" id="tab-front" onclick="selectSideTab('front')">Лицевая сторона</button>
+        <button class="side-tab" id="tab-back" onclick="selectSideTab('back')">Оборотная сторона</button>
+      </div>
+      <div class="options-grid" id="side-options">
+        <button class="opt-btn" data-val="2" onclick="setSideType('2')">2 кармана</button>
+        <button class="opt-btn" data-val="3" onclick="setSideType('3')">3 кармана</button>
+        <button class="opt-btn" data-val="4" onclick="setSideType('4')">4 кармана</button>
+        <button class="opt-btn" data-val="coin" onclick="setSideType('coin')">Монетница</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="engraving-row" onclick="toggleEngraving()">
+        <label for="engraving-check">Лазерная гравировка инициалов (+10 BYN)</label>
+        <input type="checkbox" id="engraving-check" onclick="event.stopPropagation(); toggleEngraving();" />
+      </div>
+      <div id="engraving-input-wrap">
+        <input type="text" id="engraving-text" maxlength="5" placeholder="Например: A.M." oninput="updateEngravingText()" />
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="price-box">
+      <span class="price-label">Стоимость изделия</span>
+      <span class="price-val" id="total-price">85 BYN</span>
+    </div>
+    <button class="order-btn" onclick="submitOrder()">Оформить заказ</button>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      try { tg.ready(); tg.expand(); } catch (e) {}
+    }
+
+    const COLORS = [
+      { id: 'cognac', name: 'Коньячный', hex: '#9e5328', dark: '#6d3515', light: '#be6a39', thread: '#59270b', burn: '#331404' },
+      { id: 'black', name: 'Чёрный', hex: '#26262a', dark: '#141417', light: '#3b3b42', thread: '#52525c', burn: '#09090b' },
+      { id: 'chocolate', name: 'Тёмный шоколад', hex: '#4a2c1d', dark: '#2e1a10', light: '#663f2b', thread: '#241209', burn: '#140803' },
+      { id: 'olive', name: 'Оливковый', hex: '#4d5738', dark: '#323923', light: '#67744c', thread: '#282e1b', burn: '#181c0f' },
+      { id: 'natural', name: 'Натуральный', hex: '#cfa578', dark: '#a67e53', light: '#e3be96', thread: '#8a643b', burn: '#593714' },
+      { id: 'burgundy', name: 'Бургунди', hex: '#6e232c', dark: '#47131a', light: '#8f323d', thread: '#380c12', burn: '#210508' }
+    ];
+
+    const state = {
+      theme: 'dark',
+      color: COLORS[0],
+      cornerStyle: 'round', // 'sharp' = 2мм, 'round' = 10мм
+      activeTab: 'front',
+      frontType: '2',
+      backType: '2',
+      engraving: false,
+      engravingText: '',
+      basePrice: 85,
+      rotY: 0.25,
+      rotX: -0.08,
+      targetRotY: 0.25,
+      animating: false
+    };
+
+    function toggleTheme() {
+      state.theme = state.theme === 'dark' ? 'light' : 'dark';
+      document.body.classList.toggle('light-theme', state.theme === 'light');
+      document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная';
+      drawScene();
+    }
+
+    const colorListEl = document.getElementById('color-list');
+    COLORS.forEach(c => {
+      const btn = document.createElement('div');
+      btn.className = 'color-swatch' + (c.id === state.color.id ? ' active' : '');
+      btn.style.backgroundColor = c.hex;
+      btn.onclick = () => {
+        state.color = c;
+        document.getElementById('color-name').textContent = c.name;
+        document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('active'));
+        btn.classList.add('active');
+        drawScene();
+      };
+      colorListEl.appendChild(btn);
+    });
+
+    // --- ЛЕГКИЙ 3D-РЕНДЕР НА ЧИСТОМ HTML5 CANVAS (0 КБ ВНЕШНИХ БИБЛИОТЕК) ---
+    const canvas = document.getElementById('scene-canvas');
+    const ctx = canvas.getContext('2d');
+    const wrap = document.getElementById('canvas-wrap');
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = wrap.clientWidth * dpr;
+      canvas.height = wrap.clientHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawScene();
+    }
+
+    // Вращение пальцем / мышью
+    let isDragging = false;
+    let lastX = 0, lastY = 0;
+
+    canvas.addEventListener('pointerdown', e => {
+      isDragging = true;
+      state.animating = false;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener('pointermove', e => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      state.rotY += dx * 0.014;
+      state.rotX = Math.max(-0.45, Math.min(0.45, state.rotX + dy * 0.01));
+      drawScene();
+    });
+    window.addEventListener('pointerup', () => { isDragging = false; });
+
+    function roundRectPath(c, x, y, w, h, r) {
+      const safeR = Math.min(r, w / 2, h / 2);
+      c.beginPath();
+      c.moveTo(x + safeR, y);
+      c.lineTo(x + w - safeR, y);
+      c.quadraticCurveTo(x + w, y, x + w, y + safeR);
+      c.lineTo(x + w, y + h - safeR);
+      c.quadraticCurveTo(x + w, y + h, x + w - safeR, y + h);
+      c.lineTo(x + safeR, y + h);
+      c.quadraticCurveTo(x, y + h, x, y + h - safeR);
+      c.lineTo(x, y + safeR);
+      c.quadraticCurveTo(x, y, x + safeR, y);
+      c.closePath();
+    }
+
+    function drawLeatherLayer(x, y, w, h, r, depthOffset, isTop) {
+      // Тень под слоем кожи
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.38)';
+      ctx.shadowBlur = 7;
+      ctx.shadowOffsetY = 3;
+
+      const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+      grad.addColorStop(0, isTop ? state.color.light : state.color.hex);
+      grad.addColorStop(0.5, state.color.hex);
+      grad.addColorStop(1, state.color.dark);
+
+      roundRectPath(ctx, x, y, w, h, r);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+
+      // Тонкий световой блик по верхнему/боковому обрезу кожи
+      ctx.save();
+      roundRectPath(ctx, x, y, w, h, r);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawScene() {
+      const W = wrap.clientWidth;
+      const H = wrap.clientHeight;
+      ctx.clearRect(0, 0, W, H);
+
+      // Определяем, какая сторона сейчас повернута к зрителю
+      const normY = ((state.rotY % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const isFrontVisible = normY < Math.PI / 2 || normY > (Math.PI * 3) / 2;
+      const cosY = Math.cos(state.rotY);
+      const scaleX = Math.max(0.12, Math.abs(cosY));
+      const thicknessShift = Math.sin(state.rotY) * 14; // псевдо-объем толщины торца (уреза)
+      const tiltY = Math.sin(state.rotX) * 18;
+
+      // Масштаб: 100 мм = 200 px => 1 мм = 2 px
+      const MM = 2.0;
+      const size = 100 * MM; // 200 px
+      const radiusMm = state.cornerStyle === 'sharp' ? 2 : 10;
+      const radius = radiusMm * MM;
+      const margin = 2 * MM; // отступ шва от края 2 мм (4 px)
+      const stitchWidth = 1 * MM; // ширина шва 1 мм (2 px)
+
+      ctx.save();
+      ctx.translate(W / 2, H / 2 - 8 + tiltY * 0.3);
+
+      // Мягкая тень под картхолдером
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.filter = 'blur(10px)';
+      ctx.beginPath();
+      ctx.ellipse(0, size / 2 + 16, (size * scaleX) * 0.48, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.scale(scaleX, 1);
+
+      const x0 = -size / 2;
+      const y0 = -size / 2;
+
+      // 1. Объемный торец (урез кожи) при повороте
+      ctx.save();
+      roundRectPath(ctx, x0 - thicknessShift, y0, size, size, radius);
+      ctx.fillStyle = state.color.dark;
+      ctx.fill();
+      ctx.restore();
+
+      // 2. Основная база картхолдера (100x100 мм)
+      drawLeatherLayer(x0, y0, size, size, radius, 0, true);
+
+      const activeSideType = isFrontVisible ? state.frontType : state.backType;
+
+      if (activeSideType === 'coin') {
+        // Монетница: нижний карман + клапан сверху + кнопка
+        const bodyH = size * 0.88;
+        const bodyY = y0 + (size - bodyH);
+        drawLeatherLayer(x0, bodyY, size, bodyH, radius, 2, false);
+
+        // Штриховой шов по периметру корпуса монетницы (ширина 1 мм, отступ 2 мм)
+        ctx.save();
+        roundRectPath(ctx, x0 + margin, y0 + margin, size - margin * 2, size - margin * 2, Math.max(1, radius - margin));
+        ctx.setLineDash([3.2 * MM, 1.8 * MM]);
+        ctx.lineWidth = stitchWidth;
+        ctx.strokeStyle = state.color.thread;
+        ctx.stroke();
+        ctx.restore();
+
+        // Клапан монетницы
+        const fw = size * 0.96;
+        const fh = size * 0.46;
+        const fx = -fw / 2;
+        const fy = y0 + 2 * MM;
+        const topR = Math.min(radius, 6 * MM);
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 4;
+
+        const flapGrad = ctx.createLinearGradient(fx, fy, fx, fy + fh);
+        flapGrad.addColorStop(0, state.color.light);
+        flapGrad.addColorStop(1, state.color.hex);
+
+        ctx.beginPath();
+        ctx.moveTo(fx + topR, fy);
+        ctx.lineTo(fx + fw - topR, fy);
+        ctx.quadraticCurveTo(fx + fw, fy, fx + fw, fy + topR);
+        ctx.lineTo(fx + fw, fy + fh * 0.62);
+        ctx.quadraticCurveTo(0, fy + fh * 1.15, fx, fy + fh * 0.62);
+        ctx.lineTo(fx, fy + topR);
+        ctx.quadraticCurveTo(fx, fy, fx + topR, fy);
+        ctx.closePath();
+        ctx.fillStyle = flapGrad;
+        ctx.fill();
+        ctx.restore();
+
+        // Штриховой шов по контуру клапана (отступ 2 мм, ширина 1 мм)
+        ctx.save();
+        const ifx = fx + margin, ify = fy + margin, ifw = fw - margin * 2, ifh = fh - margin * 2;
+        const iTopR = Math.max(1, topR - margin);
+        ctx.beginPath();
+        ctx.moveTo(ifx + iTopR, ify);
+        ctx.lineTo(ifx + ifw - iTopR, ify);
+        ctx.quadraticCurveTo(ifx + ifw, ify, ifx + ifw, ify + iTopR);
+        ctx.lineTo(ifx + ifw, ify + ifh * 0.6);
+        ctx.quadraticCurveTo(0, ify + ifh * 1.12, ifx, ify + ifh * 0.6);
+        ctx.lineTo(ifx, ify + iTopR);
+        ctx.quadraticCurveTo(ifx, ify, ifx + iTopR, ify);
+        ctx.closePath();
+        ctx.setLineDash([3.2 * MM, 1.8 * MM]);
+        ctx.lineWidth = stitchWidth;
+        ctx.strokeStyle = state.color.thread;
+        ctx.stroke();
+        ctx.restore();
+
+        // Металлическая кнопка
+        ctx.save();
+        const btnY = fy + fh * 0.68;
+        const btnGrad = ctx.createRadialGradient(-3, btnY - 3, 1, 0, btnY, 9);
+        btnGrad.addColorStop(0, '#7a7a85');
+        btnGrad.addColorStop(1, '#26262b');
+        ctx.fillStyle = btnGrad;
+        ctx.beginPath();
+        ctx.arc(0, btnY, 8.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Гравировка на клапане (если лицевая сторона)
+        if (isFrontVisible && state.engraving && state.engravingText.trim()) {
+          ctx.save();
+          ctx.font = 'bold 15px Georgia, serif';
+          ctx.fillStyle = state.color.burn;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(state.engravingText.trim().toUpperCase(), 0, fy + fh * 0.34);
+          ctx.restore();
+        }
+      } else {
+        // Карманы для карт: 2, 3 или 4 слота
+        const count = parseInt(activeSideType, 10);
+        for (let i = 0; i < count; i++) {
+          const h = size * (0.76 - i * (0.36 / count));
+          const py = y0 + (size - h);
+          drawLeatherLayer(x0, py, size, h, radius, i + 1, i === count - 1);
+
+          // Штриховой шов шириной 1 мм на расстоянии 2 мм от верхнего края кармана
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(x0 + margin, py + margin);
+          ctx.lineTo(x0 + size - margin, py + margin);
+          ctx.setLineDash([3.2 * MM, 1.8 * MM]);
+          ctx.lineWidth = stitchWidth;
+          ctx.strokeStyle = state.color.thread;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Периметральный штриховой шов по краю картхолдера (1 мм ширина, отступ 2 мм от края)
+        ctx.save();
+        roundRectPath(ctx, x0 + margin, y0 + margin, size - margin * 2, size - margin * 2, Math.max(1, radius - margin));
+        ctx.setLineDash([3.2 * MM, 1.8 * MM]);
+        ctx.lineWidth = stitchWidth;
+        ctx.strokeStyle = state.color.thread;
+        ctx.stroke();
+        ctx.restore();
+
+        // Гравировка внизу лицевой стороны
+        if (isFrontVisible && state.engraving && state.engravingText.trim()) {
+          ctx.save();
+          ctx.font = 'bold 16px Georgia, serif';
+          ctx.fillStyle = state.color.burn;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(state.engravingText.trim().toUpperCase(), 0, y0 + size - 18 * MM);
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function animateRotation() {
+      if (!state.animating) return;
+      const diff = state.targetRotY - state.rotY;
+      if (Math.abs(diff) < 0.02) {
+        state.rotY = state.targetRotY;
+        state.animating = false;
+        drawScene();
+        return;
+      }
+      state.rotY += diff * 0.16;
+      drawScene();
+      requestAnimationFrame(animateRotation);
+    }
+
+    function setCameraSide(side) {
+      document.getElementById('btn-front').classList.toggle('active', side === 'front');
+      document.getElementById('btn-back').classList.toggle('active', side === 'back');
+      selectSideTab(side, false);
+      state.targetRotY = side === 'front' ? 0.2 : Math.PI - 0.2;
+      state.animating = true;
+      requestAnimationFrame(animateRotation);
+    }
+
+    function selectSideTab(side, rotateCam = true) {
+      state.activeTab = side;
+      document.getElementById('tab-front').classList.toggle('active', side === 'front');
+      document.getElementById('tab-back').classList.toggle('active', side === 'back');
+      document.getElementById('active-side-label').textContent = side === 'front' ? 'Спереди' : 'Сзади';
+      updateUIState();
+      if (rotateCam) {
+        document.getElementById('btn-front').classList.toggle('active', side === 'front');
+        document.getElementById('btn-back').classList.toggle('active', side === 'back');
+        state.targetRotY = side === 'front' ? 0.2 : Math.PI - 0.2;
+        state.animating = true;
+        requestAnimationFrame(animateRotation);
+      }
+    }
+
+    function setCornerStyle(style) {
+      state.cornerStyle = style;
+      document.getElementById('corner-label').textContent = style === 'sharp' ? 'Прямые (2 мм)' : 'Скруглённые (10 мм)';
+      document.querySelectorAll('.corner-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.corner === style);
+      });
+      drawScene();
+    }
+
+    function setSideType(val) {
+      if (state.activeTab === 'front') state.frontType = val;
+      else state.backType = val;
+      updateUIState();
+      drawScene();
+    }
+
+    function toggleEngraving() {
+      const cb = document.getElementById('engraving-check');
+      state.engraving = cb.checked;
+      document.getElementById('engraving-input-wrap').style.display = state.engraving ? 'block' : 'none';
+      if (state.engraving) {
+        setCameraSide('front');
+        document.getElementById('engraving-text').focus();
+      }
+      updateUIState();
+      drawScene();
+    }
+
+    function updateEngravingText() {
+      state.engravingText = document.getElementById('engraving-text').value;
+      drawScene();
+    }
+
+    function calculatePrice() {
+      let price = state.basePrice;
+      const sideCost = (t) => (t === 'coin' ? 15 : t === '4' ? 10 : t === '3' ? 5 : 0);
+      price += sideCost(state.frontType) + sideCost(state.backType);
+      if (state.engraving) price += 10;
+      return price;
+    }
+
+    function updateUIState() {
+      const currentVal = state.activeTab === 'front' ? state.frontType : state.backType;
+      document.querySelectorAll('.opt-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.val === currentVal);
+      });
+      document.getElementById('total-price').textContent = calculatePrice() + ' BYN';
+    }
+
+    function submitOrder() {
+      const formatSide = (t) => (t === 'coin' ? 'Монетница' : `${t} кармана`);
+      const cornerName = state.cornerStyle === 'sharp' ? 'Прямые (2 мм)' : 'Скруглённые (10 мм)';
+      const price = calculatePrice();
+      const engInfo = state.engraving && state.engravingText.trim()
+        ? `Да («${state.engravingText.trim().toUpperCase()}»)`
+        : 'Нет';
+
+      const summary = [
+        'Новый заказ: Картхолдер (100×100 мм)',
+        `• Цвет кожи (нить в тон): ${state.color.name}`,
+        `• Углы: ${cornerName}`,
+        `• Спереди: ${formatSide(state.frontType)}`,
+        `• Сзади: ${formatSide(state.backType)}`,
+        `• Гравировка: ${engInfo}`,
+        `• Итого: ${price} BYN`
+      ].join('\n');
+
+      if (tg && tg.initData) {
+        try {
+          tg.sendData(JSON.stringify({
+            product: 'cardholder_100x100',
+            color: state.color.name,
+            corners: state.cornerStyle,
+            front: state.frontType,
+            back: state.backType,
+            engraving: state.engraving ? state.engravingText.trim().toUpperCase() : '',
+            price: price
+          }));
+        } catch (e) {
+          alert(summary);
+        }
+      } else {
+        alert(summary);
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    updateUIState();
+    resizeCanvas();
+  </script>
+</body>
+</html>
